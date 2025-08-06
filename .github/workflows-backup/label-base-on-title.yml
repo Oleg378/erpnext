@@ -1,8 +1,8 @@
 name: "Auto-label PRs based on title"
 
 on:
-#  pull_request_target:
-#    types: [opened, reopened]
+  pull_request_target:
+    types: [opened, reopened]
 
 jobs:
   add-label-if-prefix-matches:
