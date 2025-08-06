@@ -7,7 +7,6 @@ on:
 jobs:
   dispatch:
     runs-on: ubuntu-latest
-    env:
 
     steps:
       - name: Dispatch to Proxy Repo
