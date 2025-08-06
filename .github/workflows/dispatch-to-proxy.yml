@@ -21,7 +21,8 @@ jobs:
               "client_payload": {
                 "branch": "${{ github.head_ref }}",
                 "pr": "${{ github.event.pull_request.number }}",
-                "repo": "${{ github.repository }}"
+                "repo": "${{ github.repository }}",
+                "commit": "${{ github.event.pull_request.head.sha }}"
               }
             }'
         shell: bash
