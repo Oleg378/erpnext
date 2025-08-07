@@ -1,14 +1,26 @@
 name: Dispatch to Proxy Repo
-
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-
 jobs:
   dispatch:
     runs-on: ubuntu-latest
-
     steps:
+      - name: Set "pending" status on original PR
+        if: github.repository == 'Oleg378/erpnext'  # Only on original repo
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: '${{ github.event.pull_request.head.sha }}',
+              state: 'pending',
+              target_url: 'https://github.com/Oleg378/erpnext-pipeline/actions/runs/${{ github.run_id }}',
+              description: 'CI started via proxy repo',
+              context: 'jenkins/ci'
+            })
+
       - name: Dispatch to Proxy Repo
         run: |
           curl -X POST \
