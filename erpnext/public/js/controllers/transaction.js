@@ -6,6 +6,7 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 	setup() {
 		super.setup();
 		let me = this;
+		this.barcode_scanner = new erpnext.utils.BarcodeScanner({ frm: this.frm });
 
 		this.set_fields_onload_for_line_item();
 		this.frm.ignore_doctypes_on_cancel_all = ["Serial and Batch Bundle"];
@@ -42,6 +43,10 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 			}
 			item.base_rate_with_margin = item.rate_with_margin * flt(frm.doc.conversion_rate);
 
+			cur_frm.cscript.set_gross_profit(item);
+			cur_frm.cscript.calculate_taxes_and_totals();
+			cur_frm.cscript.calculate_stock_uom_rate(frm, cdt, cdn);
+
 			if (item.item_code && item.rate) {
 				frappe.call({
 					method: "erpnext.stock.get_item_details.get_item_tax_template",
@@ -63,10 +68,6 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 					}
 				});
 			}
-
-			cur_frm.cscript.set_gross_profit(item);
-			cur_frm.cscript.calculate_taxes_and_totals();
-			cur_frm.cscript.calculate_stock_uom_rate(frm, cdt, cdn);
 		});
 
 		frappe.ui.form.on(this.frm.cscript.tax_table, "rate", function(frm, cdt, cdn) {
@@ -473,8 +474,7 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 
 	scan_barcode() {
 		frappe.flags.dialog_set = false;
-		const barcode_scanner = new erpnext.utils.BarcodeScanner({frm:this.frm});
-		barcode_scanner.process_scan();
+		this.barcode_scanner.process_scan();
 	}
 
 	barcode(doc, cdt, cdn)  {
@@ -674,9 +674,12 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 										me.apply_product_discount(d);
 									}
 								},
-								() => {
+								async () => {
 									// for internal customer instead of pricing rule directly apply valuation rate on item
-									if ((me.frm.doc.is_internal_customer || me.frm.doc.is_internal_supplier) && me.frm.doc.represents_company === me.frm.doc.company) {
+									const fetch_valuation_rate_for_internal_transactions = await frappe.db.get_single_value(
+										"Accounts Settings", "fetch_valuation_rate_for_internal_transaction"
+									);
+									if ((me.frm.doc.is_internal_customer || me.frm.doc.is_internal_supplier) && fetch_valuation_rate_for_internal_transactions) {
 										me.get_incoming_rate(item, me.frm.posting_date, me.frm.posting_time,
 												     me.frm.doc.doctype, me.frm.doc.company);
 									} else {
@@ -1019,7 +1022,7 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 				}
 
 				var party = me.frm.doc[frappe.model.scrub(party_type)];
-				if(party && me.frm.doc.company && (!me.frm.doc.__onload?.load_after_mapping || !me.frm.doc.get(party_account_field))) {
+				if(party && me.frm.doc.company && (!me.frm.doc.__onload?.load_after_mapping || !me.frm.doc[party_account_field])) {
 					return frappe.call({
 						method: "erpnext.accounts.party.get_party_account",
 						args: {
@@ -1437,6 +1440,7 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 			]);
 		} else {
 			this.conversion_factor(doc, cdt, cdn, true)
+			this.calculate_taxes_and_totals()
 		}
 	}
 

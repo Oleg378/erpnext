@@ -475,6 +475,7 @@ class SalesInvoice(SellingController):
 				self.make_bundle_for_sales_purchase_return(table_name)
 				self.make_bundle_using_old_serial_batch_fields(table_name)
 
+			self.validate_standalone_serial_nos_customer()
 			self.update_stock_reservation_entries()
 			self.update_stock_ledger()
 
@@ -1408,7 +1409,6 @@ class SalesInvoice(SellingController):
 
 				self.make_exchange_gain_loss_journal()
 			elif self.docstatus == 2:
-				cancel_exchange_gain_loss_journal(frappe._dict(doctype=self.doctype, name=self.name))
 				make_reverse_gl_entries(voucher_type=self.doctype, voucher_no=self.name)
 
 			if update_outstanding == "No":
