@@ -95,6 +95,7 @@ class SellingController(StockController):
 		# set contact and address details for customer, if they are not mentioned
 		self.set_missing_lead_customer_details(for_validate=for_validate)
 		self.set_price_list_and_item_details(for_validate=for_validate)
+		self.set_company_contact_person()
 
 	def set_missing_lead_customer_details(self, for_validate=False):
 		customer, lead = None, None
@@ -137,6 +138,7 @@ class SellingController(StockController):
 					lead,
 					posting_date=self.get("transaction_date") or self.get("posting_date"),
 					company=self.company,
+					doctype=self.doctype,
 				)
 			)
 
@@ -148,6 +150,13 @@ class SellingController(StockController):
 	def set_price_list_and_item_details(self, for_validate=False):
 		self.set_price_list_currency("Selling")
 		self.set_missing_item_details(for_validate=for_validate)
+
+	def set_company_contact_person(self):
+		"""Set the Company's Default Sales Contact as Company Contact Person."""
+		if self.company and self.meta.has_field("company_contact_person") and not self.company_contact_person:
+			self.company_contact_person = frappe.get_cached_value(
+				"Company", self.company, "default_sales_contact"
+			)
 
 	def remove_shipping_charge(self):
 		if self.shipping_rule:
@@ -517,8 +526,15 @@ class SellingController(StockController):
 			if not frappe.get_cached_value("Item", d.item_code, "is_stock_item"):
 				continue
 
+			item_details = frappe.get_cached_value(
+				"Item", d.item_code, ["has_serial_no", "has_batch_no"], as_dict=1
+			)
+
 			if not self.get("return_against") or (
-				get_valuation_method(d.item_code) == "Moving Average" and self.get("is_return")
+				get_valuation_method(d.item_code) == "Moving Average"
+				and self.get("is_return")
+				and not item_details.has_serial_no
+				and not item_details.has_batch_no
 			):
 				# Get incoming rate based on original item cost based on valuation method
 				qty = flt(d.get("stock_qty") or d.get("actual_qty") or d.get("qty"))
@@ -988,14 +1004,26 @@ class SellingController(StockController):
 
 
 def set_default_income_account_for_item(obj):
-	for d in obj.get("items"):
-		if d.item_code:
-			if getattr(d, "income_account", None):
-				set_item_default(d.item_code, obj.company, "income_account", d.income_account)
+	"""Set income account as default for items in the transaction.
+
+	Updates the item default income account for each item in the transaction
+	if it differs from the company's default income account.
+
+	Args:
+	    obj: Transaction document containing items table with income_account field
+	"""
+	company_default = frappe.get_cached_value("Company", obj.company, "default_income_account")
+	for d in obj.get("items", default=[]):
+		income_account = getattr(d, "income_account", None)
+		if d.item_code and income_account and income_account != company_default:
+			set_item_default(d.item_code, obj.company, "income_account", income_account)
 
 
 def get_serial_and_batch_bundle(child, parent, delivery_note_child=None):
 	from erpnext.stock.serial_batch_bundle import SerialBatchCreation
+
+	if parent.get("is_return") and parent.get("packed_items"):
+		return
 
 	if child.get("use_serial_batch_fields"):
 		return

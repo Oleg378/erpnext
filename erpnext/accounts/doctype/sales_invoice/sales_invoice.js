@@ -14,6 +14,7 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends (
 	erpnext.selling.SellingController
 ) {
 	setup(doc) {
+		this.setup_accounting_dimension_triggers();
 		this.setup_posting_date_time_check();
 		super.setup(doc);
 		this.frm.make_methods = {
@@ -58,6 +59,13 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends (
 
 			me.frm.script_manager.trigger("is_pos");
 			me.frm.refresh_fields();
+			frappe.db
+				.get_value("POS Profile", this.frm.doc.pos_profile, "disable_grand_total_to_default_mop")
+				.then((r) => {
+					if (!r.exc) {
+						me.frm.skip_default_payment = r.message.disable_grand_total_to_default_mop;
+					}
+				});
 		}
 		erpnext.queries.setup_warehouse_query(this.frm);
 	}
@@ -259,6 +267,9 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends (
 						per_billed: ["<", 99.99],
 						company: me.frm.doc.company,
 					},
+					allow_child_item_selection: true,
+					child_fieldname: "items",
+					child_columns: ["item_code", "item_name", "qty", "amount", "billed_amt"],
 				});
 			},
 			__("Get Items From")
@@ -288,6 +299,9 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends (
 						status: ["!=", "Lost"],
 						company: me.frm.doc.company,
 					},
+					allow_child_item_selection: true,
+					child_fieldname: "items",
+					child_columns: ["item_code", "item_name", "qty", "rate", "amount"],
 				});
 			},
 			__("Get Items From")
@@ -319,6 +333,9 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends (
 							filters: filters,
 						};
 					},
+					allow_child_item_selection: true,
+					child_fieldname: "items",
+					child_columns: ["item_code", "item_name", "qty", "amount", "billed_amt"],
 				});
 			},
 			__("Get Items From")
@@ -497,8 +514,9 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends (
 					},
 					callback: function (r) {
 						if (!r.exc) {
-							if (r.message && r.message.print_format) {
+							if (r.message) {
 								me.frm.pos_print_format = r.message.print_format;
+								me.frm.skip_default_payment = r.message.skip_default_payment;
 							}
 							me.frm.trigger("update_stock");
 							if (me.frm.doc.taxes_and_charges) {
@@ -628,10 +646,6 @@ cur_frm.cscript.income_account = function (doc, cdt, cdn) {
 
 cur_frm.cscript.expense_account = function (doc, cdt, cdn) {
 	erpnext.utils.copy_value_in_all_rows(doc, cdt, cdn, "items", "expense_account");
-};
-
-cur_frm.cscript.cost_center = function (doc, cdt, cdn) {
-	erpnext.utils.copy_value_in_all_rows(doc, cdt, cdn, "items", "cost_center");
 };
 
 cur_frm.set_query("debit_to", function (doc) {
@@ -781,6 +795,15 @@ frappe.ui.form.on("Sales Invoice", {
 				},
 			};
 		};
+
+		frm.set_query("sales_person", "sales_team", function () {
+			return {
+				filters: {
+					is_group: 0,
+					enabled: 1,
+				},
+			};
+		});
 	},
 	onload: function (frm) {
 		frm.redemption_conversion_factor = null;

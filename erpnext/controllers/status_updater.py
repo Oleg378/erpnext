@@ -86,6 +86,7 @@ status_map = {
 		["To Bill", "eval:self.per_billed < 100 and self.docstatus == 1"],
 		["Completed", "eval:self.per_billed == 100 and self.docstatus == 1"],
 		["Return Issued", "eval:self.per_returned == 100 and self.docstatus == 1"],
+		["Return", "eval:self.is_return == 1 and self.per_billed == 0 and self.docstatus == 1"],
 		["Cancelled", "eval:self.docstatus==2"],
 		["Closed", "eval:self.status=='Closed' and self.docstatus != 2"],
 	],
@@ -93,6 +94,7 @@ status_map = {
 		["Draft", None],
 		["To Bill", "eval:self.per_billed == 0 and self.docstatus == 1"],
 		["Partly Billed", "eval:self.per_billed > 0 and self.per_billed < 100 and self.docstatus == 1"],
+		["Return", "eval:self.is_return == 1 and self.per_billed == 0 and self.docstatus == 1"],
 		["Return Issued", "eval:self.per_returned == 100 and self.docstatus == 1"],
 		[
 			"Completed",
@@ -108,7 +110,7 @@ status_map = {
 		["Pending", "eval:self.status != 'Stopped' and self.per_ordered == 0 and self.docstatus == 1"],
 		[
 			"Ordered",
-			"eval:self.status != 'Stopped' and self.per_ordered == 100 and self.docstatus == 1 and self.material_request_type == 'Purchase'",
+			"eval:self.status != 'Stopped' and self.per_ordered == 100 and self.docstatus == 1 and self.material_request_type in ['Purchase', 'Manufacture']",
 		],
 		[
 			"Transferred",
@@ -133,10 +135,6 @@ status_map = {
 		[
 			"Partially Ordered",
 			"eval:self.status != 'Stopped' and self.per_ordered < 100 and self.per_ordered > 0 and self.docstatus == 1 and self.material_request_type != 'Material Transfer'",
-		],
-		[
-			"Manufactured",
-			"eval:self.status != 'Stopped' and self.per_ordered == 100 and self.docstatus == 1 and self.material_request_type == 'Manufacture'",
 		],
 	],
 	"POS Opening Entry": [

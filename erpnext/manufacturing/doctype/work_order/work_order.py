@@ -316,7 +316,7 @@ class WorkOrder(Document):
 		# already ordered qty
 		ordered_qty_against_so = frappe.db.sql(
 			"""select sum(qty) from `tabWork Order`
-			where production_item = %s and sales_order = %s and docstatus < 2 and name != %s""",
+			where production_item = %s and sales_order = %s and docstatus < 2 and status != 'Closed' and name != %s""",
 			(self.production_item, self.sales_order, self.name),
 		)[0][0]
 
@@ -351,15 +351,16 @@ class WorkOrder(Document):
 
 	def update_status(self, status=None):
 		"""Update status of work order if unknown"""
-		if status != "Stopped" and status != "Closed":
-			status = self.get_status(status)
+		if self.status != "Closed":
+			if status not in ["Stopped", "Closed"]:
+				status = self.get_status(status)
 
-		if status != self.status:
-			self.db_set("status", status)
+			if status != self.status:
+				self.db_set("status", status)
 
-		self.update_required_items()
+			self.update_required_items()
 
-		return status
+		return status or self.status
 
 	def get_status(self, status=None):
 		"""Return the status based on stock entries against this work order"""
@@ -515,6 +516,9 @@ class WorkOrder(Document):
 		self.validate_cancel()
 		self.db_set("status", "Cancelled")
 
+		self.on_close_or_cancel()
+
+	def on_close_or_cancel(self):
 		if self.production_plan and frappe.db.exists(
 			"Production Plan Item Reference", {"parent": self.production_plan}
 		):
@@ -842,7 +846,7 @@ class WorkOrder(Document):
 
 		qty = frappe.db.sql(
 			f""" select sum(qty) from
-			`tabWork Order` where sales_order = %s and docstatus = 1 and {cond}
+			`tabWork Order` where sales_order = %s and docstatus = 1 and status <> 'Closed' and {cond}
 			""",
 			(self.sales_order, (self.product_bundle_item or self.production_item)),
 			as_list=1,
@@ -979,14 +983,14 @@ class WorkOrder(Document):
 
 		for d in self.get("operations"):
 			precision = d.precision("completed_qty")
-			qty = flt(d.completed_qty, precision) + flt(d.process_loss_qty, precision)
+			qty = flt(flt(d.completed_qty, precision) + flt(d.process_loss_qty, precision), precision)
 			if not qty:
 				d.status = "Pending"
-			elif flt(qty) < flt(self.qty):
+			elif qty < flt(self.qty, precision):
 				d.status = "Work in Progress"
-			elif flt(qty) == flt(self.qty):
+			elif qty == flt(self.qty, precision):
 				d.status = "Completed"
-			elif flt(qty) <= max_allowed_qty_for_wo:
+			elif qty <= flt(max_allowed_qty_for_wo, precision):
 				d.status = "Completed"
 			else:
 				frappe.throw(_("Completed Qty cannot be greater than 'Qty to Manufacture'"))
@@ -1373,6 +1377,13 @@ def make_work_order(bom_no, item, qty=0, project=None, variant_items=None, use_m
 
 	item_details = get_item_details(item, project)
 
+	if frappe.db.get_value("Item", item, "variant_of"):
+		if variant_bom := frappe.db.get_value(
+			"BOM",
+			{"item": item, "is_default": 1, "docstatus": 1},
+		):
+			bom_no = variant_bom
+
 	wo_doc = frappe.new_doc("Work Order")
 	wo_doc.production_item = item
 	wo_doc.update(item_details)
@@ -1502,7 +1513,7 @@ def make_stock_entry(work_order_id, purpose, qty=None, target_warehouse=None):
 		stock_entry.to_warehouse = target_warehouse or work_order.source_warehouse
 
 	stock_entry.set_stock_entry_type()
-	stock_entry.get_items(qty, work_order.production_item)
+	stock_entry.get_items()
 
 	if purpose != "Disassemble":
 		stock_entry.set_serial_no_batch_for_finished_good()
@@ -1596,8 +1607,8 @@ def close_work_order(work_order, status):
 				)
 			)
 
+	work_order.on_close_or_cancel()
 	work_order.update_status(status)
-	work_order.update_planned_qty()
 	frappe.msgprint(_("Work Order has been {0}").format(status))
 	work_order.notify_update()
 	return work_order.status
