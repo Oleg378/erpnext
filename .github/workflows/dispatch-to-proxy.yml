@@ -35,7 +35,7 @@ jobs:
                 "pr": "${{ github.event.pull_request.number }}",
                 "repo": "${{ github.repository }}",
                 "commit": "${{ github.event.pull_request.head.sha }}",
-                "labels": "${{ toJson(github.event.pull_request.labels) }}"
+                "labels": ${{ toJson(github.event.pull_request.labels) }}
               }
             }'
         shell: bash
